@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "250917960364",
+    "project_id": "niccardreader",
+    "storage_bucket": "niccardreader.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:250917960364:android:af7985f3a8abbf8edfbd09",
+        "android_client_info": {
+          "package_name": "com.example.niccardreader"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "250917960364-4019rf5d2pq3a41h1cbgodampgacnca3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCxYMEH3KHsdEg7GqCICOGSMEIkf3ZO2-k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "250917960364-4019rf5d2pq3a41h1cbgodampgacnca3.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
