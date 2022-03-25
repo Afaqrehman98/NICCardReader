@@ -14,9 +14,9 @@ import androidx.fragment.app.Fragment
 import com.example.niccardreader.databinding.FragmentReaderBinding
 import com.google.android.gms.tasks.Task
 import com.google.firebase.functions.FirebaseFunctions
-import com.google.gson.Gson
-import com.google.gson.JsonElement
-import com.google.gson.JsonParser
+import com.google.firebase.functions.ktx.functions
+import com.google.firebase.ktx.Firebase
+import com.google.gson.*
 import com.google.mlkit.nl.languageid.LanguageIdentification
 import java.io.ByteArrayOutputStream
 
@@ -24,7 +24,7 @@ class ReaderFragment : Fragment(), ActivityResultCallback<Uri?> {
     private lateinit var getImageUri: ActivityResultLauncher<String>
     private lateinit var mBinding: FragmentReaderBinding
     private lateinit var functions: FirebaseFunctions
-    private val languageIdentifier = LanguageIdentification.getClient()
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
@@ -57,6 +57,7 @@ class ReaderFragment : Fragment(), ActivityResultCallback<Uri?> {
     private fun onResultFromActivity(result: Uri?) {
         mBinding.btnNic.gone()
         mBinding.ivSelectedImage.show()
+        functions = Firebase.functions
         var bitmap: Bitmap =
             MediaStore.Images.Media.getBitmap(requireContext().contentResolver, result)
         bitmap = scaleBitmapDown(bitmap, 640)
@@ -64,16 +65,37 @@ class ReaderFragment : Fragment(), ActivityResultCallback<Uri?> {
         bitmap.compress(Bitmap.CompressFormat.JPEG, 100, byteArrayOutputStream)
         val imageBytes: ByteArray = byteArrayOutputStream.toByteArray()
         val base64encoded = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
-//        val imageFile = result?.let { uri ->
-//            requireContext().copyUriToFile(
-//                uri,
-//                requireContext().getFileNameFromUri(uri),
-//                Constants.MEDIA_TYPE_IMAGE
-//            )
-//        }
-//        val imageUri = BitmapFactory.decodeFile(imageFile?.absolutePath)
-//        mBinding.ivSelectedImage.setImageBitmap(imageUri)
-//        runTextRecognition(result)
+        // Create json request to cloud vision
+        val request = JsonObject()
+        // Add image to request
+        val image = JsonObject()
+        image.add("content", JsonPrimitive(base64encoded))
+        request.add("image", image)
+        //Add features to the request
+        val feature = JsonObject()
+        feature.add("type", JsonPrimitive("TEXT_DETECTION"))
+        // Alternatively, for DOCUMENT_TEXT_DETECTION:
+        // feature.add("type", JsonPrimitive("DOCUMENT_TEXT_DETECTION"))
+        val features = JsonArray()
+        features.add(feature)
+        request.add("features", features)
+        val imageContext = JsonObject()
+        val languageHints = JsonArray()
+        languageHints.add("en")
+        imageContext.add("languageHints", languageHints)
+        request.add("imageContext", imageContext)
+
+        annotateImage(request.toString())
+            .addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    readData(task)
+                } else {
+                    requireContext().T("Unable to fetch")
+                }
+
+            }
+
+
     }
 
     private fun annotateImage(requestJson: String): Task<JsonElement> {
@@ -94,72 +116,50 @@ class ReaderFragment : Fragment(), ActivityResultCallback<Uri?> {
 
     }
 
-//    private fun runTextRecognition(uri: Uri?) {
-//
-//        val stream = uri?.let { requireContext().contentResolver.openInputStream(it) }
-//        val bitmap = BitmapFactory.decodeStream(stream)
-//        val image = InputImage.fromBitmap(bitmap, 0)
-//        functions = Firebase.functions
-//        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-//        recognizer.process(image)
-//            .addOnSuccessListener { texts ->
-//                processTextRecognitionResult(texts)
-//            }
-//            .addOnFailureListener { e -> // Task failed with an exception
-//                e.printStackTrace()
-//            }
-//    }
-
-//    private fun processTextRecognitionResult(texts: Text?) {
-//        val blocks = texts?.textBlocks
-//        if (blocks?.size == 0) {
-//            requireContext().T("No text found")
-//            return
-//        }
-////        mGraphicOverlay.clear()
-//        for (i in blocks?.indices!!) {
-//            val lines = blocks[i]?.lines
-//            if (lines != null) {
-//                for (j in lines.indices) {
-//                    val elements = lines[j].elements
-//                    Log.e("MainActivity", "The data at element$elements")
-//                    for (k in elements.indices) {
-//                        checkLanguage(elements[k].text)
-//                        Log.e(ReaderFragment::class.java.simpleName, "${elements[k].text}")
-//                        //                    val textGraphic: Graphic = TextGraphic(mGraphicOverlay)
-//                        //                    mGraphicOverlay.add(textGraphic)
-//                    }
-//                }
-//            }
-//        }
-//    }
-
-//    private fun checkLanguage(text: String?) {
-//        if (text != null) {
-//            languageIdentifier.identifyLanguage(text)
-//                .addOnSuccessListener { languageCode ->
-//                    when (languageCode) {
-//                        "ur" -> {
-//                            Log.e(ReaderFragment::class.java.simpleName, "The language is urdu")
-//                        }
-//                        "en" -> {
-//                            Log.e(ReaderFragment::class.java.simpleName, "The language is english")
-//                        }
-//                        else -> {
-//                            Log.e(
-//                                ReaderFragment::class.java.simpleName,
-//                                "Could not verify language"
-//                            )
-//                        }
-//                    }
-//
-//                }
-//                .addOnFailureListener {
-//                    it.printStackTrace()
-//                }
-//        }
-//    }
-
+    private fun readData(task: Task<JsonElement?>) {
+        val annotation =
+            task.result!!.asJsonArray[0].asJsonObject["fullTextAnnotation"].asJsonObject
+        for (page in annotation["pages"].asJsonArray) {
+            var pageText = ""
+            for (block in page.asJsonObject["blocks"].asJsonArray) {
+                var blockText = ""
+                for (para in block.asJsonObject["paragraphs"].asJsonArray) {
+                    var paraText = ""
+                    for (word in para.asJsonObject["words"].asJsonArray) {
+                        var wordText = ""
+                        for (symbol in word.asJsonObject["symbols"].asJsonArray) {
+                            wordText += symbol.asJsonObject["text"].asString
+                            System.out.format(
+                                "Symbol text: %s (confidence: %f)%n",
+                                symbol.asJsonObject["text"].asString,
+                                symbol.asJsonObject["confidence"].asFloat
+                            )
+                        }
+                        System.out.format(
+                            "Word text: %s (confidence: %f)%n%n", wordText,
+                            word.asJsonObject["confidence"].asFloat
+                        )
+                        System.out.format(
+                            "Word bounding box: %s%n",
+                            word.asJsonObject["boundingBox"]
+                        )
+                        paraText = String.format("%s%s ", paraText, wordText)
+                    }
+                    System.out.format("%nParagraph: %n%s%n", paraText)
+                    System.out.format(
+                        "Paragraph bounding box: %s%n",
+                        para.asJsonObject["boundingBox"]
+                    )
+                    System.out.format(
+                        "Paragraph Confidence: %f%n",
+                        para.asJsonObject["confidence"].asFloat
+                    )
+                    blockText += paraText
+                }
+                pageText += blockText
+            }
+        }
+    }
     private fun scaleBitmapDown(bitmap: Bitmap, maxDimension: Int): Bitmap {
         val originalWidth = bitmap.width
         val originalHeight = bitmap.height
